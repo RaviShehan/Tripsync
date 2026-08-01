@@ -1,0 +1,21 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    fields:
+      app: tripsync
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+
+output.logstash:
+  hosts: ["logstash:5000"]
+
+logging.level: info
+logging.to_files: false
+logging.to_stderr: true

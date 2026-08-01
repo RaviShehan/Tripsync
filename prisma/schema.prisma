@@ -4,13 +4,19 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Tour {
-  id          String   @id @default(uuid())
-  name        String
-  description String
-  price       Decimal
-  createdAt   DateTime @default(now())
+  id            String   @id @default(uuid())
+  name          String
+  description   String
+  location      String
+  durationHours Int      @default(3)
+  category      String   @default("ACTIVITY")
+  imageUrl      String?
+  price         Decimal
+  rating        Decimal  @default(0)
+  availableSlots Int     @default(20)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

@@ -1,5 +1,34 @@
 node_modules
 # Keep environment variables out of version control
 .env
+.env.local
+.env.*.local
 
 /generated/prisma
+
+# Build outputs
+dist/
+.next/
+target/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Flutter
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Java / Maven
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar

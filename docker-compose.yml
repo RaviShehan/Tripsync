@@ -1,0 +1,300 @@
+# ============================================================================
+# TripSync - Microservices infrastructure & services
+# Run: docker compose up -d --build
+# ============================================================================
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+x-spring-env: &spring-env
+  SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tripsync_db
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  SPRING_REDIS_HOST: redis
+  SPRING_REDIS_PORT: 6379
+  SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+  VAULT_HOST: ${VAULT_HOST}
+  VAULT_TOKEN: ${VAULT_TOKEN}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Data stores
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: tripsync-db
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: tripsync_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d tripsync_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    container_name: tripsync-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Event streaming (Kafka)
+  # ---------------------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    restart: always
+    container_name: tripsync-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: always
+    container_name: tripsync-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:29092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Secrets management (HashiCorp Vault)
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: tripsync-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    volumes:
+      - vaultdata:/vault/file
+
+  # ---------------------------------------------------------------------------
+  # TripSync microservices
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build: ./api-gateway
+    restart: always
+    container_name: tripsync-api-gateway
+    environment:
+      PORT: ${API_GATEWAY_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      TOUR_SERVICE_URL: http://tour-service:3000
+      PROPERTY_SERVICE_URL: http://property-service:8081
+      CAR_SERVICE_URL: http://car-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "4000:4000"
+    depends_on:
+      - tour-service
+      - property-service
+      - car-service
+      - booking-service
+      - kafka
+      - redis
+
+  tour-service:
+    build:
+      context: .
+      dockerfile: tour-service/Dockerfile
+    restart: always
+    container_name: tripsync-tour-service
+    environment:
+      PORT: ${TOUR_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/tripsync_db?schema=public
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - kafka
+      - redis
+
+  property-service:
+    build: ./property-service
+    restart: always
+    container_name: tripsync-property-service
+    environment:
+      <<: *spring-env
+      SERVER_PORT: ${PROPERTY_SERVICE_PORT}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - db
+      - kafka
+      - redis
+      - vault
+
+  car-service:
+    build: ./car-service
+    restart: always
+    container_name: tripsync-car-service
+    environment:
+      <<: *spring-env
+      SERVER_PORT: ${CAR_SERVICE_PORT}
+    ports:
+      - "8082:8082"
+    depends_on:
+      - db
+      - kafka
+      - redis
+      - vault
+
+  booking-service:
+    build: ./booking-service
+    restart: always
+    container_name: tripsync-booking-service
+    environment:
+      <<: *spring-env
+      SERVER_PORT: ${BOOKING_SERVICE_PORT}
+    ports:
+      - "8083:8083"
+    depends_on:
+      - db
+      - kafka
+      - redis
+      - vault
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Next.js)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build: ./frontend
+    restart: always
+    container_name: tripsync-frontend
+    environment:
+      NEXT_PUBLIC_API_GATEWAY_URL: http://localhost:4000
+      NEXT_PUBLIC_API_GATEWAY_INTERNAL_URL: http://api-gateway:4000
+      PORT: ${FRONTEND_PORT}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api-gateway
+
+  # ---------------------------------------------------------------------------
+  # Reverse proxy (Nginx)
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    container_name: tripsync-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+      - frontend
+
+  # ---------------------------------------------------------------------------
+  # ELK stack (logging & monitoring)
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    restart: always
+    container_name: tripsync-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    restart: always
+    container_name: tripsync-logstash
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    volumes:
+      - ./infra/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    restart: always
+    container_name: tripsync-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.4
+    restart: always
+    container_name: tripsync-filebeat
+    user: root
+    volumes:
+      - ./infra/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - logstash
+      - elasticsearch
+
+volumes:
+  pgdata:
+  redisdata:
+  kafkadata:
+  vaultdata:
+  esdata:

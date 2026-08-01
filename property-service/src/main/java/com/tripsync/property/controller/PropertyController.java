@@ -21,7 +21,13 @@ public class PropertyController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Property>> getAllProperties() {
+    public ResponseEntity<List<Property>> getAllProperties(
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer guests) {
+        if (city != null || type != null || guests != null) {
+            return ResponseEntity.ok(propertyService.searchProperties(city, type, guests));
+        }
         return ResponseEntity.ok(propertyService.getAllProperties());
     }
 
