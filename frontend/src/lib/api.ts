@@ -99,14 +99,21 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   );
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_GATEWAY_URL}${path}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+async function apiGet<T>(path: string, fallback?: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_GATEWAY_URL}${path}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+    }
+    return (await res.json()) as T;
+  } catch (error) {
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    throw error;
   }
-  return res.json() as Promise<T>;
 }
 
 async function apiSend<T>(
@@ -129,7 +136,7 @@ async function apiSend<T>(
 }
 
 export function getTours(): Promise<Tour[]> {
-  return apiGet<Tour[]>("/api/v1/tours");
+  return apiGet<Tour[]>('/api/v1/tours', []);
 }
 
 export function getTour(id: string): Promise<Tour> {
@@ -144,7 +151,7 @@ export function getProperties(params: SearchParams = {}): Promise<Property[]> {
     checkIn: params.checkIn,
     checkOut: params.checkOut,
   });
-  return apiGet<Property[]>(`/api/v1/properties${query}`);
+  return apiGet<Property[]>(`/api/v1/properties${query}`, []);
 }
 
 export function getProperty(id: string): Promise<Property> {
@@ -158,7 +165,7 @@ export function getCars(params: SearchParams = {}): Promise<Car[]> {
     pickupDate: params.pickupDate,
     dropoffDate: params.dropoffDate,
   });
-  return apiGet<Car[]>(`/api/v1/cars${query}`);
+  return apiGet<Car[]>(`/api/v1/cars${query}`, []);
 }
 
 export function getCar(id: string): Promise<Car> {

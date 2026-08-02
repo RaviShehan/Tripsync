@@ -4,6 +4,12 @@ import { getTours } from "@/lib/api";
 import SearchBar from "./components/SearchBar";
 import TourCard from "./components/TourCard";
 
+const destinationHighlights = [
+  { title: "Paris", subtitle: "Art, cafés & Seine evenings", accent: "from-rose-500 to-orange-400" },
+  { title: "Tokyo", subtitle: "Neon nights & culinary escapes", accent: "from-sky-500 to-indigo-500" },
+  { title: "Bali", subtitle: "Island retreats & wellness stays", accent: "from-emerald-500 to-lime-500" },
+];
+
 export default function Home() {
   return (
     <main>
@@ -12,6 +18,7 @@ export default function Home() {
         <FeaturedTours />
       </Suspense>
       <BrowseCategories />
+      <DiscoveryRail />
     </main>
   );
 }
@@ -40,11 +47,10 @@ function Hero() {
           Trusted by 120,000+ travelers
         </span>
         <h1 className="mt-6 max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
-          Book tours, stays & cars for your next adventure
+          Plan smarter trips with AI-powered discovery
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-emerald-100">
-          Discover unforgettable experiences, cozy places to stay, and wheels to
-          roam — all in one place.
+          Discover unforgettable experiences, cozy stays, and seamless transport in one polished planner.
         </p>
         <div className="mt-10 w-full flex justify-center">
           <SearchBar />
@@ -220,6 +226,37 @@ function BrowseCategories() {
                 </svg>
               </span>
             </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DiscoveryRail() {
+  return (
+    <section className="bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wider text-emerald-600">Where&apos;s next?</p>
+            <h2 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">Trending destinations</h2>
+          </div>
+          <Link href="/search?tab=tours" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700">Explore all</Link>
+        </div>
+        <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {destinationHighlights.map((destination) => (
+            <div key={destination.title} className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-50 shadow-sm">
+              <div className={`h-28 bg-gradient-to-br ${destination.accent}`} />
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900">{destination.title}</h3>
+                <p className="mt-2 text-sm text-gray-600">{destination.subtitle}</p>
+                <Link href={`/search?city=${encodeURIComponent(destination.title)}`} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                  Browse ideas
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+                </Link>
+              </div>
+            </div>
           ))}
         </div>
       </div>
